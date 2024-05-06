@@ -3,6 +3,47 @@ const UserModel = require('../models/UserModel');
 const jwt = require('jsonwebtoken');
 
 const nodemailer = require('nodemailer');
+const randomstring = require('randomstring');
+const config = require('../config/config');
+
+const securePassword = async(password)=> {
+    try{
+        const passwordHash = await bcrypt.hash(password, 10);
+        return passwordHash;
+    }catch(error){
+        res.status(400).send(error.message);
+    }
+}
+
+const sendResetPasswordMail = async(fullName, email, token)=> {
+    try{
+        const transporter = nodemailer.createTransport({
+            host: 'smtp.gmail.com',
+            port: 587,
+            secure: false,
+            requireTLS: true,
+            auth: {
+                user: config.emailUser,
+                pass: config.emailPass
+            }
+        });
+        const mailOptions = {
+            from: config.emailUser,
+            to: email,
+            subject: 'To reset password',
+            html:'<p> Hi '+fullName+', Please copy the link and <a href="http://localhost:8080/api/v1/reset-password?token='+token+'"> reset your password.</a>'
+        }
+        transporter.sendMail(mailOptions, function(error, info){
+            if(error){
+                console.log(error);
+            }else{
+                console.log("Mail has been sent:- ", info.response);
+            }
+        })
+    }catch(error){
+        res.status(400).send({success: false, msg: error.message});
+    }
+}
 
 //send mail to verify email
 const sendVerifyMail = async(fullName, email, user_id) => {
@@ -191,6 +232,44 @@ module.exports = {
             return res.status(500).json({ message: "Error", error });
         }
     },
-    verifyMail
+    verifyMail,
+
+    foget_password : async (req, res)=> {
+        try{    
+            const email = req.body.email;
+            const userData = await UserModel.findOne({email: email})
+            if(userData){
+                const randomString = randomstring.generate();
+                const data = await UserModel.updateOne({email: email}, {$set: {token: randomString}});
+                sendResetPasswordMail(userData.fullName, userData.email, randomString);
+                res.status(200).send({success: true, msg: "Reset link sent to your email."});
+            }else{
+
+                res.status(200).send({success: true, msg: "This email doesn't exist."});
+            }
+        }catch(error){
+            console.log(error.message);
+            res.status(400).send({success: false, msg: error.message});
+        }
+    },
+    
+    reset_password : async (req, res)=> {
+        try{
+            const token = req.query.token;
+            const tokenData = await UserModel.findOne({token:token});
+            if(tokenData){
+                const password = req.body.password
+                const newPassword = await securePassword(password);
+                const userData = await UserModel.findByIdAndUpdate({ _id: tokenData._id }, {$set: {password:newPassword, token: ''}}, {new: true})
+                res.status(200).send({success: true, msg: "User password has been reset.", data:userData});
+            }else{
+
+                res.status(200).send({success: true, msg: "This link has been expired."});
+            }
+        }catch(error){
+            res.status(400).send({success: false, msg: error.message});
+
+        }
+    }
     
 }

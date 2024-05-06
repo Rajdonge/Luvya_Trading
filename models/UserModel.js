@@ -22,6 +22,10 @@ const UserSchema = new Schema({
     is_verified: {
         type: Boolean,
         default: false
+    },
+    token: {
+        type: String,
+        default: ''
     }
 });
 
